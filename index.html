@@ -84,9 +84,11 @@
   .ratio[hidden] { display: none; }
 
   .stats {
-    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 22px 0;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 22px 0;
     text-align: center; font-size: 13px; color: var(--muted);
   }
+  @media (max-width: 480px) { .stats { grid-template-columns: 1fr 1fr; row-gap: 14px; } }
+  .stats .avg b { color: var(--accent); }
   .stats b { display: block; font-size: 17px; color: var(--text); font-variant-numeric: tabular-nums; margin-top: 2px; }
 
   .adjust {
@@ -202,9 +204,10 @@
   </div>
 
   <div class="stats">
-    <div>Per hour<b id="perHour">$0</b></div>
-    <div>Per minute<b id="perMin">$0</b></div>
-    <div>Per second<b id="perSec">$0</b></div>
+    <div>Per hour now<b id="perHour">$0</b></div>
+    <div>Per minute now<b id="perMin">$0</b></div>
+    <div>Per second now<b id="perSec">$0</b></div>
+    <div class="avg" title="Total so far ÷ minutes so far">Average per minute<b id="avgMin">$0</b></div>
   </div>
 
   <div class="inroom" id="inroom"></div>
@@ -250,7 +253,7 @@
     <button id="endBtn" type="button" disabled>End meeting</button>
     <button id="resetBtn" type="button">Reset</button>
   </div>
-  <p class="note">You can change the inputs while it runs — the total so far is kept.</p>
+  <p class="note">Fixing a rate or headcount that was entered wrong? Just change it — it applies to the whole meeting. For people who arrive or leave partway through, use “People joining late or leaving early.”</p>
 </div>
 
 <div class="card scorecard" id="scorecard" hidden>
@@ -307,7 +310,6 @@
   const DEFAULT_RATE = 120;
   let mode = 'hourly';
   let running = false;
-  let accruedCost = 0;      // cost banked before the current segment
   let accruedMs = 0;        // time banked before the current segment
   let segStart = 0;         // timestamp the current segment started
   let raf = null;
@@ -426,7 +428,6 @@
     row.querySelector('.rate').value = rate;
     row.querySelector('.rate').step = mode === 'annual' ? '1000' : '1';
     row.querySelector('.count').value = count;
-    row.querySelector('.count').dataset.start = count;
     row.querySelector('.count').min = '0';
     $('rows').appendChild(row);
     updateRemoveButtons();
@@ -449,15 +450,15 @@
   function current() {
     const segMs = running ? performance.now() - segStart : 0;
     const ms = accruedMs + segMs;
-    return { ms, cost: Math.max(0, accruedCost + burn * segMs / 3600000 + adjCost(ms)) };
+    // Groups (rate x headcount at start) run for the whole meeting; joins and leaves add or subtract from their time.
+    // Editing a rate or headcount is a correction, so it applies to the whole meeting.
+    return { ms, cost: Math.max(0, burn * ms / 3600000 + adjCost(ms)) };
   }
-  // Bank the running segment so rate changes only affect time going forward
+  // Fold the running segment into the elapsed time
   function bank() {
     if (!running) return;
     const now = performance.now();
-    const segMs = now - segStart;
-    accruedCost += burn * segMs / 3600000;
-    accruedMs += segMs;
+    accruedMs += now - segStart;
     segStart = now;
   }
   function ratesChanged() {
@@ -489,6 +490,7 @@
     $('perHour').textContent = money(nowBurn);
     $('perMin').textContent = money(nowBurn / 60);
     $('perSec').textContent = money(nowBurn / 3600);
+    $('avgMin').textContent = ms >= 1000 ? money(cost / (ms / 60000)) : money(0);
 
     const inroom = $('inroom');
     if (adjustments.length) {
@@ -536,73 +538,31 @@
   // Move the elapsed time by deltaMs; cost moves at the current rate
   function shiftTime(deltaMs) {
     bank();
-    const newMs = Math.max(0, accruedMs + deltaMs);
-    const applied = newMs - accruedMs;
-    accruedMs = newMs;
-    accruedCost = Math.max(0, accruedCost + burn * applied / 3600000);
-    if (accruedMs === 0) accruedCost = 0;
+    accruedMs = Math.max(0, accruedMs + deltaMs);
     render();
     if (!$('scorecard').hidden) renderScorecard();
   }
 
   // ---------- Events ----------
-  // Once the meeting is underway, "Employees at start" stays the starting number.
-  // Changing it then is logged as people joining or leaving at that moment.
   const underway = () => current().ms > 0;
-  $('rows').addEventListener('input', e => {
-    if (e.target.classList.contains('count') && underway()) return; // handled on 'change'
-    if (e.target.classList.contains('count')) e.target.dataset.start = e.target.value;
-    ratesChanged();
-  });
-  $('rows').addEventListener('change', e => {
-    const el = e.target;
-    if (!el.classList.contains('count') || !underway()) return;
-    const row = el.closest('.row');
-    const gid = row.dataset.gid;
-    const start = parseInt(el.dataset.start) || 0;
-    const now = Math.max(0, parseInt(el.value) || 0);
-    el.value = start;                         // field keeps the starting headcount
-    const E = current().ms;
-    const delta = now - start;                // +1 on the spinner = 1 person joined, −1 = 1 left
-    const msg = $('attMsg');
-    if (delta === 0) return;
-    if (delta < 0 && -delta > peopleAt(E, gid)) {
-      msg.className = 'msg err';
-      msg.textContent = `Only ${peopleAt(E, gid)} in the room right now.`;
-      return;
-    }
-    adjustments.push({ gid, type: delta > 0 ? 'join' : 'leave', n: Math.abs(delta), t: E });
-    msg.className = 'msg';
-    msg.textContent = `Logged as ${Math.abs(delta)} ${delta > 0 ? 'joined' : 'left'} at ${fmtTime(E)}. "Employees at start" stays ${start}.`;
-    renderAttList();
-    if (!running) render();
-    if (!$('scorecard').hidden) renderScorecard();
-  });
+  $('rows').addEventListener('input', ratesChanged);
   $('rows').addEventListener('click', e => {
     const btn = e.target.closest('.remove');
     if (!btn) return;
-    bank();
     const row = btn.closest('.row');
     const gid = row.dataset.gid;
-    if (adjustments.some(a => a.gid === gid)) {
-      // Bank what those changes cost so far, then drop them with their group
-      const E = current().ms;
-      accruedCost += adjustments.filter(a => a.gid === gid).reduce((s, a) => s + adjAmount(a, E), 0);
-      adjustments = adjustments.filter(a => a.gid !== gid);
-    }
+    adjustments = adjustments.filter(a => a.gid !== gid); // a removed group goes with its joins and leaves
     row.remove();
     updateRemoveButtons();
     ratesChanged();
   });
   $('addRow').onclick = () => {
-    bank();
     const late = underway();
     const row = addRow(mode === 'annual' ? DEFAULT_RATE * HOURS_PER_YEAR : DEFAULT_RATE, late ? 0 : 1);
     if (late) {
-      // A group added mid-meeting starts with 0 people; its first person is logged as joining now
-      adjustments.push({ gid: row.dataset.gid, type: 'join', n: 1, t: current().ms });
+      // Mid-meeting: start the group empty so nothing is charged from the start by accident
       $('attMsg').className = 'msg';
-      $('attMsg').textContent = 'New group added with 1 person joining now. Change its count to add more.';
+      $('attMsg').textContent = 'New group added with 0 people. Set its count if they were here from the start, or pick the group below and add them as "joined late".';
     }
     ratesChanged();
     row.querySelector('.rate').focus();
@@ -706,7 +666,7 @@
   $('resetBtn').onclick = () => {
     running = false;
     cancelAnimationFrame(raf);
-    accruedCost = 0; accruedMs = 0; endedAt = null; rating = 0;
+    accruedMs = 0; endedAt = null; rating = 0;
     adjustments = [];
     renderAttList();
     $('attMsg').className = 'msg';
@@ -752,6 +712,7 @@
       start: clock(start), end: clock(end), duration: fmtTime(ms),
       people, groups, burn, cost, changes, attendance,
       perPerson: people ? cost / people : 0,
+      avgMin: ms >= 1000 ? cost / (ms / 60000) : 0,
       value: ri ? ri.v : null,
       ratio: ri ? ri.ratio : null,
       checks, valueOk, points, possible, grade,
@@ -774,6 +735,7 @@
       ['Groups', r.groups + (r.attendance ? ' (at start)' : '')],
       ['Burn rate', money(r.burn) + '/hr' + (r.attendance ? ' (at start)' : '')],
       ['Total cost', money(r.cost)],
+      ['Average per minute', money(r.avgMin)],
       ['Cost per attendee', money(r.perPerson)],
       ['Estimated value', r.value !== null ? money(r.value) : '—'],
       ['Value ÷ cost', r.ratio !== null ? r.ratio.toFixed(1) + '×' : '—'],
@@ -814,6 +776,7 @@
       ...(r.attendance ? [`Attendance: ${r.attendance}`, ...r.changes.map(c => `  - ${c}`)] : []),
       `Burn rate: ${money(r.burn)}/hr${r.attendance ? ' at start' : ''}`,
       `Total cost: ${money(r.cost)}`,
+      `Average per minute: ${money(r.avgMin)}`,
       `Cost per attendee: ${money(r.perPerson)}`,
       `Estimated value: ${r.value !== null ? money(r.value) : 'not entered'}`,
       `Value ÷ cost: ${r.ratio !== null ? r.ratio.toFixed(1) + '×' : '—'}`,
@@ -834,7 +797,7 @@
       ['Attendees', r.people], ['Groups at start', r.groups],
       ['Attendance changes', r.changes.join('; ')],
       ['Burn rate at start ($/hr)', r.burn.toFixed(2)],
-      ['Total cost ($)', r.cost.toFixed(2)], ['Cost per attendee ($)', r.perPerson.toFixed(2)],
+      ['Total cost ($)', r.cost.toFixed(2)], ['Average per minute ($)', r.avgMin.toFixed(2)], ['Cost per attendee ($)', r.perPerson.toFixed(2)],
       ['Estimated value ($)', r.value !== null ? r.value.toFixed(2) : ''],
       ['Value to cost ratio', r.ratio !== null ? r.ratio.toFixed(2) : ''],
       ...r.checks.map(c => [c.q, c.ok ? 'Yes' : 'No']),
