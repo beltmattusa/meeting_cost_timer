@@ -426,6 +426,8 @@
     row.querySelector('.rate').value = rate;
     row.querySelector('.rate').step = mode === 'annual' ? '1000' : '1';
     row.querySelector('.count').value = count;
+    row.querySelector('.count').dataset.start = count;
+    row.querySelector('.count').min = '0';
     $('rows').appendChild(row);
     updateRemoveButtons();
     refreshGroupSelect();
@@ -544,7 +546,38 @@
   }
 
   // ---------- Events ----------
-  $('rows').addEventListener('input', ratesChanged);
+  // Once the meeting is underway, "Employees at start" stays the starting number.
+  // Changing it then is logged as people joining or leaving at that moment.
+  const underway = () => current().ms > 0;
+  $('rows').addEventListener('input', e => {
+    if (e.target.classList.contains('count') && underway()) return; // handled on 'change'
+    if (e.target.classList.contains('count')) e.target.dataset.start = e.target.value;
+    ratesChanged();
+  });
+  $('rows').addEventListener('change', e => {
+    const el = e.target;
+    if (!el.classList.contains('count') || !underway()) return;
+    const row = el.closest('.row');
+    const gid = row.dataset.gid;
+    const start = parseInt(el.dataset.start) || 0;
+    const now = Math.max(0, parseInt(el.value) || 0);
+    el.value = start;                         // field keeps the starting headcount
+    const E = current().ms;
+    const delta = now - start;                // +1 on the spinner = 1 person joined, −1 = 1 left
+    const msg = $('attMsg');
+    if (delta === 0) return;
+    if (delta < 0 && -delta > peopleAt(E, gid)) {
+      msg.className = 'msg err';
+      msg.textContent = `Only ${peopleAt(E, gid)} in the room right now.`;
+      return;
+    }
+    adjustments.push({ gid, type: delta > 0 ? 'join' : 'leave', n: Math.abs(delta), t: E });
+    msg.className = 'msg';
+    msg.textContent = `Logged as ${Math.abs(delta)} ${delta > 0 ? 'joined' : 'left'} at ${fmtTime(E)}. "Employees at start" stays ${start}.`;
+    renderAttList();
+    if (!running) render();
+    if (!$('scorecard').hidden) renderScorecard();
+  });
   $('rows').addEventListener('click', e => {
     const btn = e.target.closest('.remove');
     if (!btn) return;
@@ -563,7 +596,14 @@
   });
   $('addRow').onclick = () => {
     bank();
-    const row = addRow(mode === 'annual' ? DEFAULT_RATE * HOURS_PER_YEAR : DEFAULT_RATE, 1);
+    const late = underway();
+    const row = addRow(mode === 'annual' ? DEFAULT_RATE * HOURS_PER_YEAR : DEFAULT_RATE, late ? 0 : 1);
+    if (late) {
+      // A group added mid-meeting starts with 0 people; its first person is logged as joining now
+      adjustments.push({ gid: row.dataset.gid, type: 'join', n: 1, t: current().ms });
+      $('attMsg').className = 'msg';
+      $('attMsg').textContent = 'New group added with 1 person joining now. Change its count to add more.';
+    }
     ratesChanged();
     row.querySelector('.rate').focus();
   };
