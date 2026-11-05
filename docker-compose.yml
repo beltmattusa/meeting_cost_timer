@@ -1,0 +1,7 @@
+services:
+  meeting-cost-timer:
+    build: .
+    container_name: meeting-cost-timer
+    ports:
+      - "8080:8080"   # change the first number to use a different port on your computer
+    restart: unless-stopped

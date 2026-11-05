@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meeting Cost Timer</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a2029; --line: #2a3340; --text: #e8ecf1;
+    --muted: #8a96a6; --accent: #f5a524; --go: #2fbf71; --stop: #e5484d;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 20px; padding: 24px 16px;
+  }
+  .card {
+    width: 100%; max-width: 560px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 16px; padding: 28px;
+  }
+  @media (max-width: 480px) { .card { padding: 20px; } }
+  h1 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+  h2 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+  h3 { margin: 24px 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .sub { margin: 0 0 24px; color: var(--muted); font-size: 14px; }
+  label, .label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .field { position: relative; }
+  .field span {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: 16px; pointer-events: none;
+  }
+  input, select, textarea {
+    width: 100%; padding: 12px; font-size: 18px; color: var(--text); font-family: inherit;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  textarea { font-size: 15px; resize: vertical; min-height: 70px; }
+  input.money { padding-left: 26px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button { font-family: inherit; }
+
+  .row, .rows-head { display: grid; grid-template-columns: 1fr 1fr 40px; gap: 12px; align-items: center; }
+  .rows-head { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .row + .row { margin-top: 10px; }
+  .remove {
+    width: 40px; height: 40px; border-radius: 10px; cursor: pointer; font-size: 20px; line-height: 1;
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+  }
+  .remove:hover { color: var(--stop); border-color: var(--stop); }
+  .remove[hidden] { display: block; visibility: hidden; }
+  .add-row {
+    margin-top: 10px; width: 100%; padding: 10px; font-size: 14px; border-radius: 10px; cursor: pointer;
+    background: transparent; color: var(--accent); border: 1px dashed var(--line);
+  }
+  .add-row:hover { border-color: var(--accent); }
+
+  .rate-type { margin-top: 12px; display: flex; gap: 8px; }
+  .rate-type button, .chip {
+    flex: 1; padding: 8px; font-size: 13px; border-radius: 8px; cursor: pointer;
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+  }
+  .rate-type button.on, .chip.on { background: var(--line); color: var(--text); }
+  .chip:hover { color: var(--text); }
+
+  .value-field { margin-top: 18px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  .display { text-align: center; margin: 28px 0 8px; }
+  .cost {
+    font-size: clamp(48px, 13vw, 80px); font-weight: 700; color: var(--accent);
+    font-variant-numeric: tabular-nums; letter-spacing: -1px; line-height: 1;
+  }
+  .time { margin-top: 10px; font-size: 22px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ratio {
+    display: inline-block; margin-top: 12px; padding: 5px 12px; border-radius: 999px;
+    font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+    background: var(--line); color: var(--text);
+  }
+  .ratio.good { background: rgba(47,191,113,.15); color: var(--go); }
+  .ratio.bad { background: rgba(229,72,77,.15); color: var(--stop); }
+  .ratio[hidden] { display: none; }
+
+  .stats {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 22px 0;
+    text-align: center; font-size: 13px; color: var(--muted);
+  }
+  .stats b { display: block; font-size: 17px; color: var(--text); font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+  .adjust {
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 16px;
+  }
+  .adjust .label { margin-bottom: 8px; }
+  .adjust-btns { display: flex; gap: 6px; }
+  .adjust-btns .chip { padding: 8px 0; }
+  .started { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+  .started label { margin: 0; white-space: nowrap; }
+  .started input { padding: 8px 10px; font-size: 15px; flex: 1; min-width: 0; }
+  .started button {
+    padding: 8px 14px; font-size: 14px; border-radius: 8px; cursor: pointer;
+    background: var(--line); color: var(--text); border: 0; white-space: nowrap;
+  }
+  .msg { font-size: 12px; margin-top: 8px; color: var(--muted); min-height: 1em; }
+  .msg.err { color: var(--stop); }
+
+  /* Attendance changes */
+  .inroom { text-align: center; font-size: 15px; margin: -8px 0 18px; }
+  .inroom b { font-variant-numeric: tabular-nums; }
+  .inroom .muted { color: var(--muted); font-size: 13px; }
+  .att-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .att-form input, .att-form select { padding: 8px 10px; font-size: 15px; width: auto; }
+  .att-form .n { width: 64px; text-align: center; }
+  .att-form .when-toggle { display: flex; align-items: center; gap: 6px; margin: 0 0 0 auto; font-size: 13px; color: var(--muted); cursor: pointer; }
+  .att-form .when-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .att-when { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 14px; color: var(--muted); }
+  .att-when[hidden] { display: none; }
+  .att-when input { padding: 8px 10px; font-size: 15px; width: 72px; text-align: center; }
+  .att-add { display: flex; justify-content: flex-end; margin-top: 10px; }
+  .att-add button, .started button {
+    padding: 8px 14px; font-size: 14px; border-radius: 8px; cursor: pointer;
+    background: var(--line); color: var(--text); border: 0; white-space: nowrap;
+  }
+  .att-list { margin-top: 10px; font-size: 14px; }
+  .att-item { display: grid; grid-template-columns: 1fr auto 32px; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+  .att-item .amt { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .att-item .x { width: 28px; height: 28px; border-radius: 8px; cursor: pointer; background: transparent; color: var(--muted); border: 1px solid var(--line); font-size: 16px; line-height: 1; }
+  .att-item .x:hover { color: var(--stop); border-color: var(--stop); }
+  .tag-join { color: var(--go); }
+  .tag-left { color: var(--stop); }
+
+  .controls { display: flex; gap: 10px; }
+  .controls button {
+    flex: 1; padding: 14px 8px; font-size: 16px; font-weight: 600; border: 0;
+    border-radius: 10px; cursor: pointer; color: #fff;
+  }
+  .controls button:disabled { opacity: .4; cursor: default; }
+  #startBtn { background: var(--go); }
+  #startBtn.running { background: var(--stop); }
+  #endBtn { background: var(--accent); color: #1a1205; }
+  #resetBtn { background: var(--line); color: var(--text); }
+  .note { margin-top: 16px; font-size: 12px; color: var(--muted); text-align: center; }
+
+  /* Scorecard */
+  .scorecard[hidden] { display: none; }
+  .score-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .grade {
+    flex: none; width: 64px; height: 64px; border-radius: 14px; display: grid; place-items: center;
+    font-size: 34px; font-weight: 800; background: var(--line);
+  }
+  .grade.A, .grade.B { background: rgba(47,191,113,.15); color: var(--go); }
+  .grade.C { background: rgba(245,165,36,.15); color: var(--accent); }
+  .grade.D, .grade.F { background: rgba(229,72,77,.15); color: var(--stop); }
+  .summary { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0; font-size: 14px; }
+  .summary dt { color: var(--muted); }
+  .summary dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .checks { display: grid; gap: 8px; }
+  .check {
+    display: flex; gap: 10px; align-items: center; padding: 10px 12px; margin: 0;
+    border: 1px solid var(--line); border-radius: 10px; cursor: pointer; color: var(--text); font-size: 14px;
+  }
+  .check input { width: 18px; height: 18px; margin: 0; flex: none; accent-color: var(--go); }
+  .check.auto { cursor: default; color: var(--muted); }
+  .stars { display: flex; gap: 6px; }
+  .stars .chip { font-size: 15px; }
+  .actions { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 20px; }
+  .actions button { grid-column: span 2; }
+  .actions button.wide { grid-column: span 3; }
+  .actions button {
+    padding: 12px; font-size: 14px; font-weight: 600; border-radius: 10px; cursor: pointer;
+    background: var(--line); color: var(--text); border: 0;
+  }
+  .actions button.primary { background: var(--accent); color: #1a1205; }
+  .meeting-name { font-size: 16px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Meeting Cost Timer</h1>
+  <p class="sub">What is this meeting costing, right now?</p>
+
+  <div class="rows-head"><span id="rateLabel">Cost per employee (per hour)</span><span>Employees at start</span><span></span></div>
+  <div id="rows"></div>
+  <button id="addRow" class="add-row" type="button">+ Add another group</button>
+
+  <div class="rate-type">
+    <button id="hourlyBtn" class="on" type="button">Hourly rate</button>
+    <button id="annualBtn" type="button">Annual salary</button>
+  </div>
+
+  <div class="value-field">
+    <label for="value">Estimated value of this meeting (optional)</label>
+    <div class="field"><span>$</span><input id="value" class="money" type="number" min="0" step="100" inputmode="decimal" placeholder="e.g. 5000"></div>
+    <div class="hint">What the outcome is worth to the business — a decision made, a problem solved, time saved later.</div>
+  </div>
+
+  <div class="display">
+    <div class="cost" id="cost">$0.00</div>
+    <div class="time" id="time">00:00:00</div>
+    <div class="ratio" id="ratio" hidden></div>
+  </div>
+
+  <div class="stats">
+    <div>Per hour<b id="perHour">$0</b></div>
+    <div>Per minute<b id="perMin">$0</b></div>
+    <div>Per second<b id="perSec">$0</b></div>
+  </div>
+
+  <div class="inroom" id="inroom"></div>
+
+  <div class="adjust">
+    <span class="label">People joining late or leaving early</span>
+    <div class="att-form">
+      <input id="attN" class="n" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="How many people">
+      <select id="attType" aria-label="Joined or left">
+        <option value="join">joined late</option>
+        <option value="leave">left early</option>
+      </select>
+      <select id="attGroup" aria-label="Which group" hidden></select>
+      <label class="when-toggle"><input id="attWhenOn" type="checkbox"> Set when</label>
+    </div>
+    <div class="att-when" id="attWhen" hidden>
+      <input id="attMin" type="number" min="0" step="1" inputmode="numeric" aria-label="Minutes">
+      <span id="attWhenLabel">minutes after the meeting started</span>
+    </div>
+    <div class="att-add"><button id="attAdd" type="button">Add</button></div>
+    <div class="msg" id="attMsg">Leave "Set when" unticked and the change happens right now.</div>
+    <div class="att-list" id="attList"></div>
+  </div>
+
+  <div class="adjust">
+    <span class="label">Adjust time (if the timer wasn't started on time)</span>
+    <div class="adjust-btns">
+      <button class="chip" type="button" data-min="-5">−5 min</button>
+      <button class="chip" type="button" data-min="-1">−1 min</button>
+      <button class="chip" type="button" data-min="1">+1 min</button>
+      <button class="chip" type="button" data-min="5">+5 min</button>
+    </div>
+    <div class="started">
+      <label for="startedAt">Meeting started at</label>
+      <input id="startedAt" type="time">
+      <button id="setStart" type="button">Set</button>
+    </div>
+    <div class="msg" id="adjustMsg"></div>
+  </div>
+
+  <div class="controls">
+    <button id="startBtn" type="button">Start</button>
+    <button id="endBtn" type="button" disabled>End meeting</button>
+    <button id="resetBtn" type="button">Reset</button>
+  </div>
+  <p class="note">You can change the inputs while it runs — the total so far is kept.</p>
+</div>
+
+<div class="card scorecard" id="scorecard" hidden>
+  <div class="score-top">
+    <div>
+      <h2>Meeting scorecard</h2>
+      <p class="sub" id="scoreSub" style="margin-bottom:0"></p>
+    </div>
+    <div class="grade" id="grade">–</div>
+  </div>
+
+  <h3>Meeting</h3>
+  <input id="meetingName" class="meeting-name" type="text" placeholder="Meeting name (optional)">
+
+  <h3>Summary</h3>
+  <dl class="summary" id="summary"></dl>
+
+  <h3>How did it go?</h3>
+  <div class="checks" id="checks">
+    <label class="check"><input type="checkbox" data-q="Had a clear agenda"> Had a clear agenda</label>
+    <label class="check"><input type="checkbox" data-q="Started on time"> Started on time</label>
+    <label class="check"><input type="checkbox" data-q="Ended on time"> Ended on time</label>
+    <label class="check"><input type="checkbox" data-q="Decisions made or action items assigned"> Decisions made or action items assigned</label>
+    <label class="check"><input type="checkbox" data-q="The right people were there"> The right people were there</label>
+    <label class="check"><input type="checkbox" data-q="Couldn't have been an email"> Couldn't have been an email</label>
+    <label class="check auto" id="valueCheck"><input type="checkbox" disabled> <span>Value exceeded cost</span></label>
+  </div>
+
+  <h3>Overall rating</h3>
+  <div class="stars" id="stars">
+    <button class="chip" type="button" data-r="1">1</button>
+    <button class="chip" type="button" data-r="2">2</button>
+    <button class="chip" type="button" data-r="3">3</button>
+    <button class="chip" type="button" data-r="4">4</button>
+    <button class="chip" type="button" data-r="5">5</button>
+  </div>
+
+  <h3>Notes</h3>
+  <textarea id="notes" placeholder="Outcomes, action items, what to do differently…"></textarea>
+
+  <div class="actions">
+    <button id="outlookBtn" class="primary wide" type="button">Email in Outlook</button>
+    <button id="emailBtn" class="wide" type="button">Email (mail app)</button>
+    <button id="copyBtn" type="button">Copy</button>
+    <button id="txtBtn" type="button">Download .txt</button>
+    <button id="csvBtn" type="button">Download .csv</button>
+  </div>
+  <div class="msg" id="shareMsg"></div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const HOURS_PER_YEAR = 2080; // 40 hrs × 52 weeks
+  const DEFAULT_RATE = 120;
+  let mode = 'hourly';
+  let running = false;
+  let accruedCost = 0;      // cost banked before the current segment
+  let accruedMs = 0;        // time banked before the current segment
+  let segStart = 0;         // timestamp the current segment started
+  let raf = null;
+  let burn = 0;             // current $/hour for the whole room
+  let endedAt = null;       // Date the meeting was ended
+  let rating = 0;
+  let gidSeq = 0;           // id for each group row
+  let adjustments = [];     // { gid, type: 'join'|'leave', n, t } — t = meeting time (ms) the change happened
+
+  const money = n => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money0 = n => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const clock = d => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+  // ---------- Groups (rows) ----------
+  function rowsData() {
+    return [...document.querySelectorAll('#rows .row')].map(row => ({
+      rate: Math.max(0, parseFloat(row.querySelector('.rate').value) || 0),
+      count: Math.max(0, parseInt(row.querySelector('.count').value) || 0)
+    }));
+  }
+  function readBurn() {
+    return rowsData().reduce((t, r) => t + (mode === 'annual' ? r.rate / HOURS_PER_YEAR : r.rate) * r.count, 0);
+  }
+  function headcount() { return rowsData().reduce((t, r) => t + r.count, 0); }
+
+  // ---------- Attendance changes ----------
+  const allRows = () => [...document.querySelectorAll('#rows .row')];
+  const rowById = gid => allRows().find(r => r.dataset.gid === String(gid));
+  function rowHourly(row) {
+    if (!row) return 0;
+    const rate = Math.max(0, parseFloat(row.querySelector('.rate').value) || 0);
+    return mode === 'annual' ? rate / HOURS_PER_YEAR : rate;
+  }
+  function rowCount(row) { return row ? Math.max(0, parseInt(row.querySelector('.count').value) || 0) : 0; }
+  const sign = a => a.type === 'join' ? 1 : -1;
+  // Cost added (joins) or saved (leaves) by one change, up to meeting time E
+  function adjAmount(a, E) { return sign(a) * rowHourly(rowById(a.gid)) * a.n * Math.max(0, E - a.t) / 3600000; }
+  function adjCost(E) { return adjustments.reduce((s, a) => s + adjAmount(a, E), 0); }
+  function adjBurn(E) { return adjustments.reduce((s, a) => s + (a.t <= E ? sign(a) * rowHourly(rowById(a.gid)) * a.n : 0), 0); }
+  function peopleAt(E, gid) {
+    const rows = gid == null ? allRows() : [rowById(gid)];
+    const base = rows.reduce((s, r) => s + rowCount(r), 0);
+    return base + adjustments.filter(a => (gid == null || a.gid === gid) && a.t <= E).reduce((s, a) => s + sign(a) * a.n, 0);
+  }
+  const totalJoined = () => adjustments.filter(a => a.type === 'join').reduce((s, a) => s + a.n, 0);
+  const totalLeft = () => adjustments.filter(a => a.type === 'leave').reduce((s, a) => s + a.n, 0);
+  const fmtMin = ms => { const m = Math.round(ms / 60000); return m < 1 ? '<1 min' : m + ' min'; };
+  function groupName(gid) {
+    const rows = allRows();
+    const i = rows.findIndex(r => r.dataset.gid === String(gid));
+    if (i < 0) return 'removed group';
+    return `group ${i + 1} (${money0(parseFloat(rows[i].querySelector('.rate').value) || 0)}${mode === 'annual' ? '/yr' : '/hr'})`;
+  }
+  function adjLabel(a, E) {
+    const who = `${a.n} ${a.type === 'join' ? 'joined' : 'left'}`;
+    const when = a.type === 'join' ? `${fmtMin(a.t)} late` : `${fmtMin(Math.max(0, E - a.t))} early`;
+    const grp = allRows().length > 1 ? ` · ${groupName(a.gid)}` : '';
+    return { who, when: when + grp };
+  }
+
+  function refreshGroupSelect() {
+    const sel = $('attGroup');
+    const prev = sel.value;
+    const rows = allRows();
+    sel.innerHTML = '';
+    rows.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r.dataset.gid; o.textContent = groupName(r.dataset.gid);
+      sel.appendChild(o);
+    });
+    if (rows.some(r => r.dataset.gid === prev)) sel.value = prev;
+    sel.hidden = rows.length < 2;
+  }
+
+  function renderAttList() {
+    const list = $('attList');
+    list.innerHTML = '';
+    const E = current().ms;
+    adjustments.slice().sort((a, b) => a.t - b.t).forEach(a => {
+      const item = document.createElement('div');
+      item.className = 'att-item';
+      const l = adjLabel(a, E);
+      item.innerHTML = '<span><span class="who"></span> <span class="when"></span></span><span class="amt"></span>' +
+        '<button class="x" type="button" aria-label="Remove this change" title="Remove">×</button>';
+      item.querySelector('.who').textContent = l.who;
+      item.querySelector('.who').className = 'who ' + (a.type === 'join' ? 'tag-join' : 'tag-left');
+      item.querySelector('.when').textContent = l.when;
+      item._adj = a;
+      item.querySelector('.x').onclick = () => {
+        adjustments = adjustments.filter(x => x !== a);
+        renderAttList();
+        if (!running) render();
+        if (!$('scorecard').hidden) renderScorecard();
+      };
+      list.appendChild(item);
+    });
+    updateAttAmounts(E);
+  }
+  function updateAttAmounts(E) {
+    document.querySelectorAll('#attList .att-item').forEach(item => {
+      const a = item._adj;
+      const amt = adjAmount(a, E);
+      item.querySelector('.amt').textContent = (amt >= 0 ? '+' : '−') + money(Math.abs(amt));
+      if (a.type === 'leave') item.querySelector('.when').textContent = adjLabel(a, E).when;
+    });
+  }
+
+  function addRow(rate, count) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.dataset.gid = String(++gidSeq);
+    row.innerHTML =
+      '<div class="field"><span>$</span><input class="rate money" type="number" min="0" inputmode="decimal" aria-label="Cost per employee"></div>' +
+      '<input class="count" type="number" min="1" step="1" inputmode="numeric" aria-label="Number of employees">' +
+      '<button class="remove" type="button" aria-label="Remove this group" title="Remove this group">×</button>';
+    row.querySelector('.rate').value = rate;
+    row.querySelector('.rate').step = mode === 'annual' ? '1000' : '1';
+    row.querySelector('.count').value = count;
+    $('rows').appendChild(row);
+    updateRemoveButtons();
+    refreshGroupSelect();
+    return row;
+  }
+  function updateRemoveButtons() {
+    const rows = document.querySelectorAll('#rows .row');
+    rows.forEach(r => { r.querySelector('.remove').hidden = rows.length === 1; });
+  }
+
+  // ---------- Timer ----------
+  function fmtTime(ms) {
+    const s = Math.floor(ms / 1000);
+    const h = String(Math.floor(s / 3600)).padStart(2, '0');
+    const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    const sec = String(s % 60).padStart(2, '0');
+    return `${h}:${m}:${sec}`;
+  }
+  function current() {
+    const segMs = running ? performance.now() - segStart : 0;
+    const ms = accruedMs + segMs;
+    return { ms, cost: Math.max(0, accruedCost + burn * segMs / 3600000 + adjCost(ms)) };
+  }
+  // Bank the running segment so rate changes only affect time going forward
+  function bank() {
+    if (!running) return;
+    const now = performance.now();
+    const segMs = now - segStart;
+    accruedCost += burn * segMs / 3600000;
+    accruedMs += segMs;
+    segStart = now;
+  }
+  function ratesChanged() {
+    bank();
+    burn = readBurn();
+    refreshGroupSelect();
+    renderAttList();
+    if (!running) render();
+  }
+
+  function meetingValue() {
+    const v = parseFloat($('value').value);
+    return v > 0 ? v : null;
+  }
+  function ratioInfo(cost) {
+    const v = meetingValue();
+    if (v === null) return null;
+    if (cost <= 0) return { v, ratio: null, text: 'Value ÷ cost: —' };
+    const ratio = v / cost;
+    const verdict = ratio >= 1 ? 'worth it so far' : 'costing more than it’s worth';
+    return { v, ratio, text: `Value ÷ cost: ${ratio >= 100 ? Math.round(ratio) : ratio.toFixed(1)}× — ${verdict}` };
+  }
+
+  function render() {
+    const { ms, cost } = current();
+    $('cost').textContent = money(cost);
+    $('time').textContent = fmtTime(ms);
+    const nowBurn = Math.max(0, burn + adjBurn(ms));
+    $('perHour').textContent = money(nowBurn);
+    $('perMin').textContent = money(nowBurn / 60);
+    $('perSec').textContent = money(nowBurn / 3600);
+
+    const inroom = $('inroom');
+    if (adjustments.length) {
+      const j = totalJoined(), l = totalLeft();
+      inroom.innerHTML = 'In the room now: <b></b> <span class="muted"></span>';
+      inroom.querySelector('b').textContent = Math.max(0, peopleAt(ms));
+      inroom.querySelector('.muted').textContent =
+        `· ${headcount()} at start${j ? `, +${j} joined` : ''}${l ? `, −${l} left` : ''}`;
+    } else {
+      inroom.textContent = '';
+    }
+    updateAttAmounts(ms);
+
+    const ri = ratioInfo(cost);
+    const pill = $('ratio');
+    pill.hidden = !ri;
+    if (ri) {
+      pill.textContent = ri.text;
+      pill.classList.toggle('good', ri.ratio !== null && ri.ratio >= 1);
+      pill.classList.toggle('bad', ri.ratio !== null && ri.ratio < 1);
+    }
+    $('endBtn').disabled = ms < 1000;
+    if (running) raf = requestAnimationFrame(render);
+  }
+
+  function startTimer() {
+    if (running) return;
+    running = true;
+    segStart = performance.now();
+    $('startBtn').textContent = 'Pause';
+    $('startBtn').classList.add('running');
+    $('scorecard').hidden = true; // meeting continues, so the scorecard is out of date
+    render();
+  }
+  function pauseTimer() {
+    if (!running) return;
+    bank();
+    running = false;
+    cancelAnimationFrame(raf);
+    $('startBtn').textContent = 'Resume';
+    $('startBtn').classList.remove('running');
+    render();
+  }
+
+  // Move the elapsed time by deltaMs; cost moves at the current rate
+  function shiftTime(deltaMs) {
+    bank();
+    const newMs = Math.max(0, accruedMs + deltaMs);
+    const applied = newMs - accruedMs;
+    accruedMs = newMs;
+    accruedCost = Math.max(0, accruedCost + burn * applied / 3600000);
+    if (accruedMs === 0) accruedCost = 0;
+    render();
+    if (!$('scorecard').hidden) renderScorecard();
+  }
+
+  // ---------- Events ----------
+  $('rows').addEventListener('input', ratesChanged);
+  $('rows').addEventListener('click', e => {
+    const btn = e.target.closest('.remove');
+    if (!btn) return;
+    bank();
+    const row = btn.closest('.row');
+    const gid = row.dataset.gid;
+    if (adjustments.some(a => a.gid === gid)) {
+      // Bank what those changes cost so far, then drop them with their group
+      const E = current().ms;
+      accruedCost += adjustments.filter(a => a.gid === gid).reduce((s, a) => s + adjAmount(a, E), 0);
+      adjustments = adjustments.filter(a => a.gid !== gid);
+    }
+    row.remove();
+    updateRemoveButtons();
+    ratesChanged();
+  });
+  $('addRow').onclick = () => {
+    bank();
+    const row = addRow(mode === 'annual' ? DEFAULT_RATE * HOURS_PER_YEAR : DEFAULT_RATE, 1);
+    ratesChanged();
+    row.querySelector('.rate').focus();
+  };
+  $('value').addEventListener('input', () => { if (!running) render(); if (!$('scorecard').hidden) renderScorecard(); });
+
+  function setMode(m) {
+    bank();
+    document.querySelectorAll('#rows .rate').forEach(rateEl => {
+      const val = parseFloat(rateEl.value) || 0;
+      if (m !== mode) {
+        rateEl.value = m === 'annual' ? Math.round(val * HOURS_PER_YEAR) : Math.round(val / HOURS_PER_YEAR * 100) / 100;
+      }
+      rateEl.step = m === 'annual' ? '1000' : '1';
+    });
+    mode = m;
+    $('hourlyBtn').classList.toggle('on', m === 'hourly');
+    $('annualBtn').classList.toggle('on', m === 'annual');
+    $('rateLabel').textContent = m === 'annual' ? 'Annual salary per employee' : 'Cost per employee (per hour)';
+    burn = readBurn();
+    refreshGroupSelect();
+    renderAttList();
+    if (!running) render();
+  }
+
+  // ---------- Attendance form ----------
+  function attWhenLabel() {
+    $('attWhenLabel').textContent = $('attType').value === 'join'
+      ? 'minutes after the meeting started'
+      : 'minutes ago (before now, or before you paused)';
+  }
+  $('attWhenOn').onchange = () => {
+    $('attWhen').hidden = !$('attWhenOn').checked;
+    if ($('attWhenOn').checked) $('attMin').focus();
+  };
+  $('attType').onchange = attWhenLabel;
+
+  $('attAdd').onclick = () => {
+    const msg = $('attMsg');
+    const err = t => { msg.className = 'msg err'; msg.textContent = t; };
+    const n = parseInt($('attN').value);
+    if (!(n >= 1)) return err('Enter how many people.');
+    const type = $('attType').value;
+    const gid = allRows().length > 1 ? $('attGroup').value : allRows()[0].dataset.gid;
+    const E = current().ms;
+    let t = E;
+    if ($('attWhenOn').checked) {
+      const m = parseFloat($('attMin').value);
+      if (!(m >= 0)) return err('Enter the number of minutes.');
+      const off = m * 60000;
+      if (off > E) return err(`The meeting has only been going ${fmtMin(E)}.`);
+      t = type === 'join' ? off : E - off;
+    }
+    if (type === 'leave') {
+      const there = peopleAt(t, gid);
+      if (n > there) return err(`Only ${there} ${there === 1 ? 'person was' : 'people were'} ${allRows().length > 1 ? 'in that group ' : ''}in the room then.`);
+    }
+    adjustments.push({ gid, type, n, t });
+    msg.className = 'msg';
+    msg.textContent = 'Added. Use × to undo a change.';
+    $('attN').value = 1;
+    $('attMin').value = '';
+    renderAttList();
+    if (!running) render();
+    if (!$('scorecard').hidden) renderScorecard();
+  };
+  $('hourlyBtn').onclick = () => setMode('hourly');
+  $('annualBtn').onclick = () => setMode('annual');
+
+  document.querySelectorAll('.adjust-btns .chip').forEach(b => {
+    b.onclick = () => { shiftTime(parseInt(b.dataset.min) * 60000); $('adjustMsg').textContent = ''; };
+  });
+
+  $('setStart').onclick = () => {
+    const msg = $('adjustMsg');
+    const v = $('startedAt').value;
+    if (!v) { msg.className = 'msg err'; msg.textContent = 'Pick the time the meeting started.'; return; }
+    const [h, m] = v.split(':').map(Number);
+    const start = new Date(); start.setHours(h, m, 0, 0);
+    const elapsed = Date.now() - start.getTime();
+    if (elapsed < 0) { msg.className = 'msg err'; msg.textContent = 'That time is in the future.'; return; }
+    if (elapsed > 12 * 3600000) { msg.className = 'msg err'; msg.textContent = 'That’s more than 12 hours ago — check the time.'; return; }
+    bank();
+    shiftTime(elapsed - accruedMs);
+    startTimer();
+    msg.className = 'msg';
+    msg.textContent = `Timer set to ${fmtTime(elapsed)} (started ${clock(start)}) and running.`;
+  };
+
+  $('startBtn').onclick = () => running ? pauseTimer() : startTimer();
+
+  $('endBtn').onclick = () => {
+    pauseTimer();
+    endedAt = new Date();
+    $('startBtn').textContent = 'Resume';
+    $('scorecard').hidden = false;
+    renderScorecard();
+    $('scorecard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  $('resetBtn').onclick = () => {
+    running = false;
+    cancelAnimationFrame(raf);
+    accruedCost = 0; accruedMs = 0; endedAt = null; rating = 0;
+    adjustments = [];
+    renderAttList();
+    $('attMsg').className = 'msg';
+    $('attMsg').textContent = 'Leave "Set when" unticked and the change happens right now.';
+    $('startBtn').textContent = 'Start';
+    $('startBtn').classList.remove('running');
+    $('scorecard').hidden = true;
+    $('adjustMsg').textContent = '';
+    $('startedAt').value = '';
+    $('meetingName').value = '';
+    $('notes').value = '';
+    document.querySelectorAll('#checks input:not([disabled])').forEach(c => c.checked = false);
+    document.querySelectorAll('#stars .chip').forEach(c => c.classList.remove('on'));
+    render();
+  };
+
+  // ---------- Scorecard ----------
+  function report() {
+    const { ms, cost } = current();
+    const end = endedAt || new Date();
+    const start = new Date(end.getTime() - ms);
+    const people = headcount() + totalJoined();
+    const changes = adjustments.slice().sort((a, b) => a.t - b.t).map(a => { const l = adjLabel(a, ms); return `${l.who} ${l.when}`; });
+    const attendance = adjustments.length
+      ? `${headcount()} at start${totalJoined() ? `, +${totalJoined()} joined late` : ''}${totalLeft() ? `, −${totalLeft()} left early` : ''}`
+      : '';
+    const ri = ratioInfo(cost);
+    const unit = mode === 'annual' ? '/yr' : '/hr';
+    const groups = rowsData().map(r => `${r.count} × ${money0(r.rate)}${unit}`).join('; ');
+    const checks = [...document.querySelectorAll('#checks input:not([disabled])')].map(c => ({ q: c.dataset.q, ok: c.checked }));
+    const valueOk = ri && ri.ratio !== null ? ri.ratio >= 1 : null;
+
+    // Score: one point per checklist item, plus one if value exceeded cost (when a value was entered)
+    let points = checks.filter(c => c.ok).length;
+    let possible = checks.length;
+    if (valueOk !== null) { possible++; if (valueOk) points++; }
+    const pct = points / possible;
+    const grade = pct >= 0.9 ? 'A' : pct >= 0.75 ? 'B' : pct >= 0.6 ? 'C' : pct >= 0.4 ? 'D' : 'F';
+
+    return {
+      name: $('meetingName').value.trim(),
+      date: end.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }),
+      start: clock(start), end: clock(end), duration: fmtTime(ms),
+      people, groups, burn, cost, changes, attendance,
+      perPerson: people ? cost / people : 0,
+      value: ri ? ri.v : null,
+      ratio: ri ? ri.ratio : null,
+      checks, valueOk, points, possible, grade,
+      rating, notes: $('notes').value.trim()
+    };
+  }
+
+  function renderScorecard() {
+    const r = report();
+    $('scoreSub').textContent = `${r.date} · ${r.start} – ${r.end}`;
+    const g = $('grade');
+    g.textContent = r.grade;
+    g.className = 'grade ' + r.grade;
+    g.title = `${r.points} of ${r.possible} checks`;
+    const rows = [
+      ['Duration', r.duration],
+      ['Attendees', String(r.people)],
+      ...(r.attendance ? [['Attendance', r.attendance]] : []),
+      ...r.changes.map((c, i) => [i ? '' : 'Changes', c]),
+      ['Groups', r.groups + (r.attendance ? ' (at start)' : '')],
+      ['Burn rate', money(r.burn) + '/hr' + (r.attendance ? ' (at start)' : '')],
+      ['Total cost', money(r.cost)],
+      ['Cost per attendee', money(r.perPerson)],
+      ['Estimated value', r.value !== null ? money(r.value) : '—'],
+      ['Value ÷ cost', r.ratio !== null ? r.ratio.toFixed(1) + '×' : '—'],
+      ['Score', `${r.points} / ${r.possible} (${r.grade})`]
+    ];
+    $('summary').innerHTML = '';
+    rows.forEach(([k, v]) => {
+      const dt = document.createElement('dt'); dt.textContent = k;
+      const dd = document.createElement('dd'); dd.textContent = v;
+      $('summary').append(dt, dd);
+    });
+    const vc = $('valueCheck');
+    vc.querySelector('input').checked = !!r.valueOk;
+    vc.querySelector('span').textContent = r.valueOk === null
+      ? 'Value exceeded cost (enter an estimated value to score this)'
+      : 'Value exceeded cost';
+  }
+
+  $('checks').addEventListener('change', renderScorecard);
+  $('stars').addEventListener('click', e => {
+    const b = e.target.closest('.chip');
+    if (!b) return;
+    rating = parseInt(b.dataset.r);
+    document.querySelectorAll('#stars .chip').forEach(c => c.classList.toggle('on', parseInt(c.dataset.r) <= rating));
+  });
+
+  function reportText() {
+    const r = report();
+    const lines = [
+      `MEETING SCORECARD${r.name ? ' — ' + r.name : ''}`,
+      `${r.date}, ${r.start} – ${r.end}`,
+      '',
+      `Grade: ${r.grade} (${r.points} of ${r.possible} checks)`,
+      `Overall rating: ${r.rating ? r.rating + ' / 5' : 'not rated'}`,
+      '',
+      `Duration: ${r.duration}`,
+      `Attendees: ${r.people} (${r.groups}${r.attendance ? ' at start' : ''})`,
+      ...(r.attendance ? [`Attendance: ${r.attendance}`, ...r.changes.map(c => `  - ${c}`)] : []),
+      `Burn rate: ${money(r.burn)}/hr${r.attendance ? ' at start' : ''}`,
+      `Total cost: ${money(r.cost)}`,
+      `Cost per attendee: ${money(r.perPerson)}`,
+      `Estimated value: ${r.value !== null ? money(r.value) : 'not entered'}`,
+      `Value ÷ cost: ${r.ratio !== null ? r.ratio.toFixed(1) + '×' : '—'}`,
+      '',
+      'Checklist:',
+      ...r.checks.map(c => `  [${c.ok ? 'x' : ' '}] ${c.q}`),
+      `  [${r.valueOk ? 'x' : ' '}] Value exceeded cost${r.valueOk === null ? ' (no value entered)' : ''}`
+    ];
+    if (r.notes) lines.push('', 'Notes:', r.notes);
+    lines.push('', '— Meeting Cost Timer: ' + location.href.split('#')[0]);
+    return lines.join('\n');
+  }
+
+  function reportCsv() {
+    const r = report();
+    const cols = [
+      ['Meeting', r.name], ['Date', r.date], ['Start', r.start], ['End', r.end], ['Duration', r.duration],
+      ['Attendees', r.people], ['Groups at start', r.groups],
+      ['Attendance changes', r.changes.join('; ')],
+      ['Burn rate at start ($/hr)', r.burn.toFixed(2)],
+      ['Total cost ($)', r.cost.toFixed(2)], ['Cost per attendee ($)', r.perPerson.toFixed(2)],
+      ['Estimated value ($)', r.value !== null ? r.value.toFixed(2) : ''],
+      ['Value to cost ratio', r.ratio !== null ? r.ratio.toFixed(2) : ''],
+      ...r.checks.map(c => [c.q, c.ok ? 'Yes' : 'No']),
+      ['Value exceeded cost', r.valueOk === null ? '' : r.valueOk ? 'Yes' : 'No'],
+      ['Score', `${r.points}/${r.possible}`], ['Grade', r.grade],
+      ['Rating (1-5)', r.rating || ''], ['Notes', r.notes]
+    ];
+    const esc = v => { const s = String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    return cols.map(c => esc(c[0])).join(',') + '\n' + cols.map(c => esc(c[1])).join(',') + '\n';
+  }
+
+  function fileName(ext) {
+    const r = report();
+    const e = endedAt || new Date();
+    const d = `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2, '0')}-${String(e.getDate()).padStart(2, '0')}`;
+    const slug = (r.name || 'meeting').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'meeting';
+    return `${slug}-scorecard-${d}.${ext}`;
+  }
+  function download(text, ext, type) {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName(ext);
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    flash(`Downloaded ${a.download}`);
+  }
+  function flash(t) { $('shareMsg').textContent = t; }
+
+  $('txtBtn').onclick = () => download(reportText(), 'txt', 'text/plain;charset=utf-8');
+  $('csvBtn').onclick = () => download('﻿' + reportCsv(), 'csv', 'text/csv;charset=utf-8');
+  $('copyBtn').onclick = async () => {
+    try { await navigator.clipboard.writeText(reportText()); flash('Copied — paste it into Teams, an email or a doc.'); }
+    catch { flash('Couldn’t copy automatically. Use Download (.txt) instead.'); }
+  };
+  function emailSubject() {
+    const r = report();
+    return `Meeting scorecard${r.name ? ': ' + r.name : ''} — ${money(r.cost)} (${r.grade})`;
+  }
+  // Outlook on the web (Microsoft 365) — works regardless of the computer's default mail app
+  $('outlookBtn').onclick = () => {
+    const url = 'https://outlook.office.com/mail/deeplink/compose?subject=' + encodeURIComponent(emailSubject()) +
+      '&body=' + encodeURIComponent(reportText());
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    flash('Opened Outlook in a new tab. Add recipients and send.');
+  };
+  // The computer's default mail app (mailto:)
+  $('emailBtn').onclick = () => {
+    location.href = 'mailto:?subject=' + encodeURIComponent(emailSubject()) + '&body=' + encodeURIComponent(reportText());
+    flash('Opening your email app. Add recipients and send.');
+  };
+  ['meetingName', 'notes'].forEach(id => $(id).addEventListener('input', renderScorecard));
+
+  addRow(DEFAULT_RATE, 8);
+  burn = readBurn();
+  render();
+</script>
+</body>
+</html>
