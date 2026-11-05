@@ -10,7 +10,8 @@ Type in what people cost per hour and how many are in the room, press **Start**,
 
 ## What it does
 
-- **Live cost counter.** Shows the running total, the time, and what the meeting costs per hour, per minute and per second.
+- **Live cost counter.** Shows the running total, the time, what the meeting costs right now (per hour, minute and second), and the average cost per minute so far.
+- **Fix mistakes any time.** Typed the wrong rate or headcount at the start? Just change it — the fix applies to the whole meeting.
 - **Hourly rate or yearly salary.** Enter whichever you know. Yearly salaries are turned into an hourly rate based on a 40-hour week (2,080 hours a year).
 - **Different pay levels in one meeting.** Use **+ Add another group** if, say, 3 managers and 6 staff are in the same meeting.
 - **People who show up late or leave early.** Add them as they come and go, or tick **Set when** and say "2 people joined 10 minutes late" or "3 people left 15 minutes early". Each change can be undone with the **×**.
